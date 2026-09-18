@@ -24,7 +24,7 @@ jobs:
 
           cat << 'EOF' > build.gradle
           plugins {
-              id 'fabric-loom' version '1.7-SNAPSHOT'
+              id 'fabric-loom' version '1.7.1'
               id 'maven-publish'
           }
           version = "1.0.0"
@@ -33,7 +33,7 @@ jobs:
           dependencies {
               minecraft "com.mojang:minecraft:1.21.1"
               mappings loom.officialMojangMappings()
-              modImplementation "net.fabricmc:fabric-loader:0.18.1"
+              modImplementation "net.fabricmc:fabric-loader:0.16.0"
               modImplementation "net.fabricmc.fabric-api:fabric-api:0.102.0+1.21.1"
           }
           tasks.withType(JavaCompile).configureEach { it.options.release = 21 }
@@ -49,7 +49,7 @@ jobs:
             "authors": ["User"],
             "environment": "client",
             "entrypoints": { "client": ["com.example.guiscale.GuiScaleMod"] },
-            "depends": { "fabricloader": ">=0.18.1", "minecraft": "~1.21.1", "java": ">=21" }
+            "depends": { "fabricloader": ">=0.16.0", "minecraft": "~1.21.1", "java": ">=21" }
           }
           EOF
 
