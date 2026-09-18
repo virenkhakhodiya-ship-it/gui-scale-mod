@@ -1,4 +1,4 @@
-            name: Build Minecraft Mod
+name: Build Minecraft Mod
 
 on:
   push:
@@ -24,12 +24,15 @@ jobs:
 
           cat << 'EOF' > build.gradle
           plugins {
-              id 'fabric-loom' version '1.7.1'
+              id 'fabric-loom' version '1.7-SNAPSHOT'
               id 'maven-publish'
           }
           version = "1.0.0"
           group = "com.example.guiscale"
-          repositories { mavenCentral() }
+          repositories {
+              maven { url 'https://maven.fabricmc.net/' }
+              mavenCentral()
+          }
           dependencies {
               minecraft "com.mojang:minecraft:1.21.1"
               mappings loom.officialMojangMappings()
