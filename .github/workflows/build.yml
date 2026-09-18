@@ -1,0 +1,175 @@
+name: Build Minecraft Mod
+
+on:
+  push:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Create Project Files
+        run: |
+          mkdir -p src/main/java/com/example/guiscale
+          mkdir -p src/main/resources
+
+          cat << 'EOF' > build.gradle
+          plugins {
+              id 'fabric-loom' version '1.7-SNAPSHOT'
+              id 'maven-publish'
+          }
+          version = "1.0.0"
+          group = "com.example.guiscale"
+          repositories { mavenCentral() }
+          dependencies {
+              minecraft "com.mojang:minecraft:1.21.1"
+              mappings loom.officialMojangMappings()
+              modImplementation "net.fabricmc:fabric-loader:0.18.1"
+              modImplementation "net.fabricmc.fabric-api:fabric-api:0.102.0+1.21.1"
+          }
+          tasks.withType(JavaCompile).configureEach { it.options.release = 21 }
+          EOF
+
+          cat << 'EOF' > src/main/resources/fabric.mod.json
+          {
+            "schemaVersion": 1,
+            "id": "guiscalemod",
+            "version": "1.0.0",
+            "name": "GUI Scale Customizer",
+            "description": "Adjust GUI Scale fine-tuned from 50% to 200%.",
+            "authors": ["User"],
+            "environment": "client",
+            "entrypoints": { "client": ["com.example.guiscale.GuiScaleMod"] },
+            "depends": { "fabricloader": ">=0.18.1", "minecraft": "~1.21.1", "java": ">=21" }
+          }
+          EOF
+
+          cat << 'EOF' > src/main/java/com/example/guiscale/GuiScaleMod.java
+          package com.example.guiscale;
+          import net.fabricmc.api.ClientModInitializer;
+          import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+          import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+          import net.minecraft.client.KeyMapping;
+          import com.mojang.blaze3d.platform.InputConstants;
+          import org.lwjgl.glfw.GLFW;
+
+          public class GuiScaleMod implements ClientModInitializer {
+              public static KeyMapping openGuiKey;
+              @Override
+              public void onInitializeClient() {
+                  openGuiKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+                      "key.guiscalemod.open", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_K, "category.guiscalemod"
+                  ));
+                  ClientTickEvents.END_CLIENT_TICK.register(client -> {
+                      while (openGuiKey.consumeClick()) {
+                          if (client.player != null) client.setScreen(new GuiScaleScreen());
+                      }
+                  });
+              }
+          }
+          EOF
+
+          cat << 'EOF' > src/main/java/com/example/guiscale/GuiScaleScreen.java
+          package com.example.guiscale;
+          import net.minecraft.client.Minecraft;
+          import net.minecraft.client.gui.GuiGraphics;
+          import net.minecraft.client.gui.components.Button;
+          import net.minecraft.client.gui.components.EditBox;
+          import net.minecraft.client.gui.components.AbstractSliderButton;
+          import net.minecraft.client.gui.screens.Screen;
+          import net.minecraft.network.chat.Component;
+
+          public class GuiScaleScreen extends Screen {
+              private double currentScale;
+              private EditBox inputField;
+              private ScaleSlider slider;
+
+              public GuiScaleScreen() {
+                  super(Component.literal("Adjust GUI Scale"));
+                  this.currentScale = Minecraft.getInstance().options.guiScale().get() == 0 ? 1.0 : Minecraft.getInstance().options.guiScale().get() / 2.0;
+                  if (currentScale < 0.5) currentScale = 0.5;
+                  if (currentScale > 2.0) currentScale = 2.0;
+              }
+
+              @Override
+              protected void init() {
+                  int centerX = this.width / 2;
+                  int centerY = this.height / 2;
+                  this.slider = new ScaleSlider(centerX - 100, centerY - 30, 200, 20, (this.currentScale - 0.5) / 1.5);
+                  this.addRenderableWidget(this.slider);
+                  this.inputField = new EditBox(this.font, centerX - 40, centerY + 5, 80, 20, Component.literal("Percentage"));
+                  this.inputField.setValue((int) (this.currentScale * 100) + "%");
+                  this.inputField.setResponder(text -> {
+                      try {
+                          String cleanText = text.replaceAll("[^0-9]", "");
+                          if (!cleanText.isEmpty()) {
+                              int val = Integer.parseInt(cleanText);
+                              val = Math.max(50, Math.min(200, val));
+                              this.currentScale = val / 100.0;
+                              this.slider.updateFromInput((this.currentScale - 0.5) / 1.5);
+                              applyScale(this.currentScale);
+                          }
+                      } catch (NumberFormatException ignored) {}
+                  });
+                  this.addRenderableWidget(this.inputField);
+                  this.addRenderableWidget(Button.builder(Component.literal("Done"), btn -> this.onClose())
+                          .bounds(centerX - 50, centerY + 40, 100, 20).build());
+              }
+
+              private void applyScale(double scale) {
+                  Minecraft mc = Minecraft.getInstance();
+                  mc.options.guiScale().set((int) Math.round(scale * 2));
+                  mc.options.save();
+                  mc.resizeDisplay();
+              }
+
+              @Override
+              public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+                  super.render(guiGraphics, mouseX, mouseY, partialTick);
+                  guiGraphics.drawCenteredString(this.font, this.title, this.width / 2, this.height / 2 - 60, 0xFFFFFF);
+              }
+
+              private class ScaleSlider extends AbstractSliderButton {
+                  public ScaleSlider(int x, int y, int width, int height, double value) {
+                      super(x, y, width, height, Component.empty(), value);
+                      updateMessage();
+                  }
+                  @Override
+                  protected void updateMessage() {
+                      setMessage(Component.literal("GUI Scale: " + (int) Math.round((50 + this.value * 150)) + "%"));
+                  }
+                  @Override
+                  protected void applyValue() {
+                      currentScale = (50 + this.value * 150) / 100.0;
+                      if (inputField != null) inputField.setValue((int) (currentScale * 100) + "%");
+                      applyScale(currentScale);
+                  }
+                  public void updateFromInput(double sliderValue) {
+                      this.value = Math.max(0.0, Math.min(1.0, sliderValue));
+                      updateMessage();
+                  }
+              }
+          }
+          EOF
+
+      - name: Setup Gradle
+        run: gradle wrapper
+
+      - name: Build Mod File
+        run: ./gradlew build
+
+      - name: Upload Mod Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: guiscalemod-1.21.1
+          path: build/libs/*.jar
+          
